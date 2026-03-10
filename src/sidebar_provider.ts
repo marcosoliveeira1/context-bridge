@@ -5,11 +5,12 @@ import * as fs from "fs";
 export class SidebarProvider implements vscode.WebviewViewProvider {
 	constructor(private readonly _extensionUri: vscode.Uri) { }
 
-
 	public resolveWebviewView(webviewView: vscode.WebviewView) {
-		webviewView.webview.options = { enableScripts: true, localResourceRoots: [this._extensionUri] };
+		webviewView.webview.options = {
+			enableScripts: true,
+			localResourceRoots: [this._extensionUri]
+		};
 
-		// Tenta carregar config existente para preencher o campo
 		let existingExcludes = "";
 		const workspace = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
 		if (workspace) {
@@ -27,10 +28,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 		webviewView.webview.onDidReceiveMessage(async (data) => {
 			switch (data.type) {
 				case "onCompile":
-					vscode.commands.executeCommand("project.compileProject", data.params);
+					const content = await vscode.commands.executeCommand<string>("project.compileProject", { versioned: data.versioned });
+					if (content) {
+						webviewView.webview.postMessage({ type: 'compileResult', value: content });
+					}
 					break;
 				case "onSpread":
-					vscode.commands.executeCommand("project.spreadProject", data.params);
+					const count = await vscode.commands.executeCommand<number>("project.spreadProject", { content: data.content });
+					if (count && count > 0) {
+						webviewView.webview.postMessage({ type: 'spreadSuccess' });
+					}
 					break;
 				case "onSaveConfig":
 					vscode.commands.executeCommand("project.saveConfig", { exclude: data.exclude });
@@ -39,78 +46,129 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 		});
 	}
 
-	private _getHtmlForWebview(existingExcludes: string) {
+	private _getHtmlForWebview(excludes: string) {
 		return `<!DOCTYPE html>
 
 
-
-<html lang="pt-br">
+<html lang="pt-pt">
 <head>
 <meta charset="UTF-8">
 <style>
-body { font-family: var(--vscode-font-family); padding: 15px; display: flex; flex-direction: column; gap: 12px; color: var(--vscode-foreground); }
-.field { display: flex; flex-direction: column; gap: 4px; }
-.row { display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; }
-label { font-size: 10px; font-weight: bold; text-transform: uppercase; opacity: 0.8; }
-input[type="text"], textarea { padding: 6px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); font-family: inherit; }
-textarea { resize: vertical; min-height: 40px; }
-button { cursor: pointer; padding: 8px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; margin-top: 5px; }
+body { font-family: var(--vscode-font-family); padding: 12px; color: var(--vscode-foreground); display: flex; flex-direction: column; gap: 15px; }
+.section { display: flex; flex-direction: column; gap: 8px; }
+label { font-size: 11px; font-weight: 600; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.5px; }
+textarea {
+width: 100%; background: var(--vscode-input-background); color: var(--vscode-input-foreground);
+border: 1px solid var(--vscode-input-border); font-family: var(--vscode-editor-font-family);
+font-size: 12px; min-height: 120px; resize: vertical; box-sizing: border-box; padding: 8px;
+}
+textarea:focus { outline: 1px solid var(--vscode-focusBorder); border-color: transparent; }
+button {
+cursor: pointer; padding: 10px; border: none; width: 100%; font-weight: bold;
+background: var(--vscode-button-background); color: var(--vscode-button-foreground);
+transition: opacity 0.2s;
+}
 button:hover { background: var(--vscode-button-hoverBackground); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
 .secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
-.save-btn { font-size: 10px; padding: 4px; margin-top: 2px; }
-hr { border: 0; border-top: 1px solid var(--vscode-settings-dropdownBorder); margin: 5px 0; }
+.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+.row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+hr { border: 0; border-top: 1px solid var(--vscode-divider); margin: 5px 0; }
+#status { font-size: 10px; color: var(--vscode-charts-green); font-style: italic; display: none; }
 </style>
 </head>
 <body>
-<div class="field">
-<label>Ignorar (Pastas/Arquivos)</label>
-<textarea id="excludeList" placeholder="temp, coverage, .cache">${existingExcludes}</textarea>
-<button class="secondary save-btn" onclick="saveConfig()">💾 Salvar no Projeto</button>
+<div class="section">
+<label>1. Entrada (AI Spread)</label>
+<textarea id="inputSpread" placeholder="Cole aqui a resposta da IA..."></textarea>
+<button id="btnSpread" onclick="spread()">📂 Espalhar no Projeto</button>
 </div>
-
 
 <hr />
 
-<div class="field">
-	<label>Arquivo de Saída (Compile)</label>
-	<input type="text" id="outputFile" value="logs/project_out.txt">
+<div class="section">
+	<label>2. Saída (Project Context)</label>
+	<div class="row">
+		<input type="checkbox" id="versioned" checked>
+		<label for="versioned" style="text-transform: none; font-weight: normal; opacity: 1;">Salvar em .compile_history</label>
+	</div>
+	<button id="btnCompile" onclick="compile()">🚀 Gerar Contexto (Compile)</button>
+	<textarea id="outputCompile" readonly placeholder="O resultado da compilação aparecerá aqui..."></textarea>
+	<button class="secondary" onclick="copyOutput()">📋 Copiar Contexto</button>
 </div>
-
-<div class="row">
-	<input type="checkbox" id="versioned">
-	<label for="versioned" style="cursor:pointer">Versionar Output (Timestamp)</label>
-</div>
-
-<button onclick="run('onCompile')">🚀 Compilar para IA</button>
 
 <hr />
 
-<div class="field">
-	<label>Arquivo de Entrada (Spread)</label>
-	<input type="text" id="inputFile" value="logs/project_in.txt">
+<div class="section">
+	<label>Configurações (Ignore List)</label>
+	<textarea id="excludeList" style="min-height: 50px;" placeholder="Ex: temp, backup, logs...">${excludes}</textarea>
+	<button class="secondary" onclick="saveConfig()">💾 Guardar .compiladorai</button>
 </div>
-<button class="secondary" onclick="run('onSpread')">📂 Espalhar no Projeto</button>
 
 <script>
 	const vscode = acquireVsCodeApi();
-	function run(type) {
-		vscode.postMessage({ 
-			type, 
-			params: {
-				outputFile: document.getElementById('outputFile').value,
-				inputFile: document.getElementById('inputFile').value,
-				versioned: document.getElementById('versioned').checked
-			}
-		});
-	}
-	function saveConfig() {
-		vscode.postMessage({
-			type: 'onSaveConfig',
-			exclude: document.getElementById('excludeList').value
-		});
-	}
-</script>
+	const oldState = vscode.getState() || { input: '', output: '', excludes: '${excludes.replace(/'/g, "\\'")}' };
+	
+	const inputSpread = document.getElementById('inputSpread');
+	const outputCompile = document.getElementById('outputCompile');
+	const excludeList = document.getElementById('excludeList');
+	const btnCompile = document.getElementById('btnCompile');
+	const btnSpread = document.getElementById('btnSpread');
 
+	// Restaurar estado
+	inputSpread.value = oldState.input || '';
+	outputCompile.value = oldState.output || '';
+	if(oldState.excludes) excludeList.value = oldState.excludes;
+
+	function updateState() {
+		vscode.setState({
+			input: inputSpread.value,
+			output: outputCompile.value,
+			excludes: excludeList.value
+		});
+	}
+
+	inputSpread.addEventListener('input', updateState);
+	outputCompile.addEventListener('input', updateState);
+	excludeList.addEventListener('input', updateState);
+
+	function compile() {
+		const versioned = document.getElementById('versioned').checked;
+		btnCompile.disabled = true;
+		btnCompile.innerText = "A processar...";
+		vscode.postMessage({ type: 'onCompile', versioned });
+	}
+
+	function spread() {
+		if(!inputSpread.value.trim()) return;
+		btnSpread.disabled = true;
+		vscode.postMessage({ type: 'onSpread', content: inputSpread.value });
+	}
+
+	function copyOutput() {
+		outputCompile.select();
+		document.execCommand('copy');
+	}
+
+	function saveConfig() {
+		vscode.postMessage({ type: 'onSaveConfig', exclude: excludeList.value });
+	}
+
+	window.addEventListener('message', event => {
+		const m = event.data;
+		if (m.type === 'compileResult') {
+			outputCompile.value = m.value;
+			btnCompile.disabled = false;
+			btnCompile.innerText = "🚀 Gerar Contexto (Compile)";
+			updateState();
+		}
+		if (m.type === 'spreadSuccess') {
+			inputSpread.value = '';
+			btnSpread.disabled = false;
+			updateState();
+		}
+	});
+</script>
 
 
 </body>

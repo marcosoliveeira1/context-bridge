@@ -11,91 +11,69 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.registerWebviewViewProvider("compilador-ai-view", sidebarProvider)
   );
 
-  // COMANDO SALVAR CONFIG
   context.subscriptions.push(vscode.commands.registerCommand("project.saveConfig", async (config: { exclude: string }) => {
     const workspace = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
     if (!workspace) { return; }
-
-
     const configPath = path.join(workspace, '.compiladorai');
     const excludeArray = config.exclude.split(',').map(s => s.trim()).filter(s => s.length > 0);
 
     try {
       await fs.writeFile(configPath, JSON.stringify({ exclude: excludeArray }, null, 2), 'utf8');
-      vscode.window.showInformationMessage("Configuração salva em .compiladorai");
+      vscode.window.showInformationMessage("Configuração salva com sucesso.");
     } catch (err: any) {
-      vscode.window.showErrorMessage(`Erro ao salvar config: ${err.message}`);
+      vscode.window.showErrorMessage(`Erro ao salvar: ${err.message}`);
     }
-
 
 
   }));
 
-  // COMANDO COMPILE
   context.subscriptions.push(vscode.commands.registerCommand("project.compileProject", async (params) => {
     const workspace = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
-    if (!workspace) { return; }
-
-
-    let outPath = params?.outputFile || "logs/project_out.txt";
-
-    if (params?.versioned) {
-      const ext = path.extname(outPath);
-      const base = outPath.replace(ext, "");
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-      outPath = `${base}_${timestamp}${ext}`;
-    }
-
-    const fullOutputPath = path.isAbsolute(outPath) ? outPath : path.join(workspace, outPath);
+    if (!workspace) { return ""; }
 
     const compiler = new ProjectCompiler({
       projectRoot: workspace,
-      outputFile: fullOutputPath
+      outputFile: "",
+      saveToHistory: params?.versioned
     });
 
-    await vscode.window.withProgress({
+    return await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
-      title: "Compilando...",
-      cancellable: false
+      title: "Gerando contexto para IA...",
     }, async () => {
-      const count = await compiler.run();
-      vscode.window.showInformationMessage(`Compilado: ${count} arquivos em ${path.basename(fullOutputPath)}`);
-      const doc = await vscode.workspace.openTextDocument(fullOutputPath);
-      await vscode.window.showTextDocument(doc);
+      const result = await compiler.run();
+      return result.content;
     });
-
 
 
   }));
 
-  // COMANDO SPREAD
-  context.subscriptions.push(vscode.commands.registerCommand("project.spreadProject", async (params) => {
+  context.subscriptions.push(vscode.commands.registerCommand("project.spreadProject", async (params: { content?: string }) => {
     const workspace = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
-    if (!workspace) { return; }
-
-
-    const inPath = params?.inputFile || "logs/project_in.txt";
-    const fullInputPath = path.isAbsolute(inPath) ? inPath : path.join(workspace, inPath);
+    if (!workspace) { return 0; }
 
     const spreader = new ProjectSpreader({
-      inputFile: fullInputPath,
+      inputFile: "",
       outputDirectory: workspace,
       force: true
     });
 
     try {
-      await vscode.window.withProgress({
+      return await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: "Espalhando...",
-        cancellable: false
+        title: "Espalhando arquivos no projeto...",
       }, async () => {
-        const count = await spreader.run();
-        vscode.window.showInformationMessage(`Sucesso: ${count} arquivos extraídos.`);
+        // Agora a assinatura do run aceita o parâmetro corretamente
+        const count = await spreader.run(params?.content);
+        if (count > 0) {
+          vscode.window.showInformationMessage(`Sucesso! ${count} arquivos atualizados.`);
+        }
+        return count;
       });
     } catch (err: any) {
       vscode.window.showErrorMessage(`Erro: ${err.message}`);
+      return 0;
     }
-
 
 
   }));

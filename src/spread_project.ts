@@ -10,27 +10,21 @@ export interface SpreadConfig {
 export class ProjectSpreader {
   constructor(private config: SpreadConfig) { }
 
-  async run(): Promise<number> {
-    const inputPath = path.resolve(this.config.inputFile);
+  async run(directContent?: string): Promise<number> {
     const outDir = path.resolve(this.config.outputDirectory);
 
-
-    try {
-      const stats = await fs.stat(outDir);
-      if (stats.isDirectory()) {
-        const files = await fs.readdir(outDir);
-        if (files.length > 0 && !this.config.force) {
-          throw new Error("Diretório de saída não está vazio. Use force: true.");
-        }
-      }
-    } catch (e: any) {
-      if (e.code !== 'ENOENT') { throw e; }
+    let content = "";
+    if (directContent !== undefined && directContent !== null) {
+      content = directContent;
+    } else if (this.config.inputFile) {
+      const inputPath = path.resolve(this.config.inputFile);
+      content = await fs.readFile(inputPath, 'utf8');
     }
 
-    await fs.mkdir(outDir, { recursive: true });
-    const content = await fs.readFile(inputPath, 'utf8');
+    if (!content) {
+      return 0;
+    }
 
-    // Regex ajustada para capturar o conteúdo entre os marcadores corretamente
     const regex = /--- START: (.*?) ---\r?\n([\s\S]*?)\r?\n--- END: \1 ---/gm;
     let match;
     let created = 0;
@@ -39,23 +33,27 @@ export class ProjectSpreader {
       const relPath = match[1].trim();
       let fileContent = match[2];
 
-      // Sanitização básica: remove blocos de código markdown que a IA possa ter inserido por vício
-      fileContent = fileContent.replace(/\r\n/g, "\n").replaceAll("```", "").trimEnd();
+      // Sanitização: remove blocos de código markdown apenas se envolverem o conteúdo total
+      fileContent = fileContent.replace(/^(\s*```[a-zA-Z]*\r?\n)/, "").replace(/(\r?\n\s*```\s*)$/, "").replaceAll("```", ""); // Remove blocos de código markdown
 
       const targetPath = path.resolve(outDir, relPath);
 
-      // Segurança: impede que o arquivo seja escrito fora do diretório do projeto
       if (!targetPath.startsWith(outDir)) {
-        console.warn(`Tentativa de path traversal bloqueada: ${relPath}`);
+        console.warn(`[Security] Bloqueada tentativa de escrita fora do workspace: ${relPath}`);
         continue;
       }
 
-      await fs.mkdir(path.dirname(targetPath), { recursive: true });
-      await fs.writeFile(targetPath, fileContent, 'utf8');
-      created++;
+      try {
+        await fs.mkdir(path.dirname(targetPath), { recursive: true });
+        await fs.writeFile(targetPath, fileContent, 'utf8');
+        created++;
+      } catch (err) {
+        console.error(`Erro ao gravar ficheiro ${relPath}:`, err);
+      }
     }
 
     return created;
+
 
   }
 }
