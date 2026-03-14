@@ -7,8 +7,19 @@ import { SidebarProvider } from "./sidebar_provider";
 
 export function activate(context: vscode.ExtensionContext) {
   const sidebarProvider = new SidebarProvider(context.extensionUri);
+  const outputChannel = vscode.window.createOutputChannel("Compilador AI");
+  context.subscriptions.push(outputChannel);
+
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider("compilador-ai-view", sidebarProvider)
+    vscode.window.registerWebviewViewProvider(
+      "compilador-ai-view",
+      sidebarProvider,
+      {
+        webviewOptions: {
+          retainContextWhenHidden: true
+        }
+      }
+    )
   );
 
   context.subscriptions.push(vscode.commands.registerCommand("project.saveConfig", async (config: { exclude: string }) => {
@@ -23,8 +34,6 @@ export function activate(context: vscode.ExtensionContext) {
     } catch (err: any) {
       vscode.window.showErrorMessage(`Erro ao salvar: ${err.message}`);
     }
-
-
   }));
 
   context.subscriptions.push(vscode.commands.registerCommand("project.compileProject", async (params) => {
@@ -42,10 +51,16 @@ export function activate(context: vscode.ExtensionContext) {
       title: "Gerando contexto para IA...",
     }, async () => {
       const result = await compiler.run();
-      return result.content;
+      if (params?.logCompiledFiles && result.files.length > 0) {
+        outputChannel.appendLine(`[${new Date().toISOString()}] Arquivos compilados (${result.files.length}):`);
+        for (const file of result.files) {
+          outputChannel.appendLine(`- ${file}`);
+        }
+        outputChannel.appendLine("");
+        outputChannel.show(true);
+      }
+      return { content: result.content, files: result.files };
     });
-
-
   }));
 
   context.subscriptions.push(vscode.commands.registerCommand("project.spreadProject", async (params: { content?: string }) => {
@@ -63,7 +78,6 @@ export function activate(context: vscode.ExtensionContext) {
         location: vscode.ProgressLocation.Notification,
         title: "Espalhando arquivos no projeto...",
       }, async () => {
-        // Agora a assinatura do run aceita o parâmetro corretamente
         const count = await spreader.run(params?.content);
         if (count > 0) {
           vscode.window.showInformationMessage(`Sucesso! ${count} arquivos atualizados.`);
@@ -74,7 +88,5 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.window.showErrorMessage(`Erro: ${err.message}`);
       return 0;
     }
-
-
   }));
 }

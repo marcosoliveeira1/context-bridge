@@ -24,23 +24,6 @@ export class ProjectCompiler {
 
   constructor(private config: CompileConfig) { }
 
-  private async isBinary(filePath: string): Promise<boolean> {
-    let fileHandle;
-    try {
-      fileHandle = await fs.open(filePath, 'r');
-      const buffer = Buffer.alloc(512);
-      const { bytesRead } = await fileHandle.read(buffer, 0, 512, 0);
-      for (let i = 0; i < bytesRead; i++) {
-        if (buffer[i] === 0) { return true; }
-      }
-      return false;
-    } catch (e) {
-      return false;
-    } finally {
-      if (fileHandle) { await fileHandle.close(); }
-    }
-  }
-
   private async loadProjectConfig() {
     const configPath = path.join(this.config.projectRoot, '.compiladorai');
     try {
@@ -74,13 +57,14 @@ export class ProjectCompiler {
 
   }
 
-  async run(): Promise<{ content: string; count: number }> {
+  async run(): Promise<{ content: string; count: number; files: string[] }> {
     await this.loadProjectConfig();
     const root = path.resolve(this.config.projectRoot);
     const targetExt = this.config.fileExtension?.toLowerCase();
 
-    let combined = "";
+    const parts: string[] = [];
     let count = 0;
+    const files: string[] = [];
 
     for await (const filePath of this.walk(root)) {
       const relPath = path.relative(root, filePath);
@@ -91,18 +75,22 @@ export class ProjectCompiler {
       if (targetExt && ext !== targetExt) { continue; }
       if (this.BINARY_EXTS.has(ext)) { continue; }
 
-      if (await this.isBinary(filePath)) { continue; }
+      if (this.BINARY_EXTS.has(ext)) { continue; }
 
       try {
         const content = await fs.readFile(filePath, 'utf8');
-        combined += `--- START: ${relPath} ---\n${content}\n--- END: ${relPath} ---\n\n`;
+        parts.push(
+          `--- START: ${relPath} ---\n${content}\n--- END: ${relPath} ---\n`
+        );
+        files.push(relPath);
         count++;
+        console.log(`Adicionado: ${relPath}`);
       } catch (e) {
         console.error(`Erro ao ler ${relPath}: `, e);
       }
     }
 
-    const finalContent = combined.trimEnd();
+    const finalContent = parts.join("\n");
 
     if (this.config.saveToHistory && finalContent) {
       const historyDir = path.join(this.config.projectRoot, '.compile_history');
@@ -117,7 +105,7 @@ export class ProjectCompiler {
       await fs.writeFile(historyPath, finalContent, 'utf8');
     }
 
-    return { content: finalContent, count };
+    return { content: finalContent, count, files };
 
 
   }

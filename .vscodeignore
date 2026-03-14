@@ -18,3 +18,4 @@ node_modules/**
 tsconfig.json
 esbuild.js
 .eslintrc.json
+.compile_history

@@ -1,35 +1,52 @@
 {
-"name": "context-bridge",
-"displayName": "Context Bridge",
-"version": "1.1.0",
-"engines": {
-"vscode": "^1.109.0"
-},
-"main": "./out/extension.js",
-"activationEvents": [
-"onCommand:project.compileProject",
-"onCommand:project.spreadProject",
-"onCommand:project.saveConfig",
-"onView:compilador-ai-view"
-],
-"scripts": {
-"compile": "rm -rf out && tsc --noEmit && node esbuild.js",
-"watch": "npm-run-all -p watch:*",
-"watch:esbuild": "node esbuild.js --watch",
-"watch:tsc": "tsc --noEmit --watch",
-"test": "pnpm run compile && vscode-test"
-},
-"devDependencies": {
-"@types/mocha": "^10.0.10",
-"@types/node": "22.x",
-"@types/vscode": "^1.109.0",
-"esbuild": "^0.27.3",
-"npm-run-all": "^4.1.5",
-"typescript": "^5.9.3",
-"glob": "^10.4.5"
-},
-"dependencies": {
-"@vscode/test-cli": "^0.0.12",
-"@vscode/test-electron": "^2.5.2"
-}
+    "name": "context-bridge",
+    "displayName": "Context Bridge",
+    "version": "1.1.0",
+    "engines": {
+        "vscode": "^1.109.0"
+    },
+    "main": "./out/extension.js",
+    "activationEvents": [
+        "onView:compilador-ai-view"
+    ],
+    "contributes": {
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "context-bridge-explorer",
+                    "title": "Context Bridge",
+                    "icon": "$(bridge)"
+                }
+            ]
+        },
+        "views": {
+            "context-bridge-explorer": [
+                {
+                    "type": "webview",
+                    "id": "compilador-ai-view",
+                    "name": "Context Bridge Controls"
+                }
+            ]
+        }
+    },
+    "scripts": {
+        "compile": "rm -rf out && tsc --noEmit && node esbuild.js",
+        "watch": "npm-run-all -p watch:*",
+        "watch:esbuild": "node esbuild.js --watch",
+        "watch:tsc": "tsc --noEmit --watch",
+        "test": "pnpm run compile && vscode-test"
+    },
+    "devDependencies": {
+        "@types/mocha": "^10.0.10",
+        "@types/node": "22.x",
+        "@types/vscode": "^1.109.0",
+        "esbuild": "^0.27.3",
+        "npm-run-all": "^4.1.5",
+        "typescript": "^5.9.3",
+        "glob": "^10.4.5"
+    },
+    "dependencies": {
+        "@vscode/test-cli": "^0.0.12",
+        "@vscode/test-electron": "^2.5.2"
+    }
 }

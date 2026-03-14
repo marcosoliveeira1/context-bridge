@@ -28,9 +28,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 		webviewView.webview.onDidReceiveMessage(async (data) => {
 			switch (data.type) {
 				case "onCompile":
-					const content = await vscode.commands.executeCommand<string>("project.compileProject", { versioned: data.versioned });
-					if (content) {
-						webviewView.webview.postMessage({ type: 'compileResult', value: content });
+					const result = await vscode.commands.executeCommand<{ content: string; files: string[] }>("project.compileProject", {
+						versioned: data.versioned,
+						logCompiledFiles: data.logCompiledFiles
+					});
+					if (result) {
+						webviewView.webview.postMessage({ type: 'compileResult', value: result.content, files: result.files });
 					}
 					break;
 				case "onSpread":
@@ -92,6 +95,10 @@ hr { border: 0; border-top: 1px solid var(--vscode-divider); margin: 5px 0; }
 		<input type="checkbox" id="versioned" checked>
 		<label for="versioned" style="text-transform: none; font-weight: normal; opacity: 1;">Salvar em .compile_history</label>
 	</div>
+	<div class="row">
+		<input type="checkbox" id="logCompiledFiles">
+		<label for="logCompiledFiles" style="text-transform: none; font-weight: normal; opacity: 1;">Logar nomes dos arquivos compilados</label>
+	</div>
 	<button id="btnCompile" onclick="compile()">🚀 Gerar Contexto (Compile)</button>
 	<textarea id="outputCompile" readonly placeholder="O resultado da compilação aparecerá aqui..."></textarea>
 	<button class="secondary" onclick="copyOutput()">📋 Copiar Contexto</button>
@@ -134,9 +141,10 @@ hr { border: 0; border-top: 1px solid var(--vscode-divider); margin: 5px 0; }
 
 	function compile() {
 		const versioned = document.getElementById('versioned').checked;
+		const logCompiledFiles = document.getElementById('logCompiledFiles').checked;
 		btnCompile.disabled = true;
 		btnCompile.innerText = "A processar...";
-		vscode.postMessage({ type: 'onCompile', versioned });
+		vscode.postMessage({ type: 'onCompile', versioned, logCompiledFiles });
 	}
 
 	function spread() {
@@ -148,6 +156,8 @@ hr { border: 0; border-top: 1px solid var(--vscode-divider); margin: 5px 0; }
 	function copyOutput() {
 		outputCompile.select();
 		document.execCommand('copy');
+		outputCompile.value = '';
+		updateState();
 	}
 
 	function saveConfig() {

@@ -47,6 +47,7 @@ export class ProjectSpreader {
         await fs.mkdir(path.dirname(targetPath), { recursive: true });
         await fs.writeFile(targetPath, fileContent, 'utf8');
         created++;
+        console.log(`Criado: ${relPath}`);
       } catch (err) {
         console.error(`Erro ao gravar ficheiro ${relPath}:`, err);
       }

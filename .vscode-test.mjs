@@ -1,10 +1,10 @@
 import { defineConfig } from '@vscode/test-cli';
 
 export default defineConfig({
-// Ajustado para olhar tanto em out quanto em dist, dependendo de onde seu esbuild joga
+// Aponta para os arquivos compilados pelo esbuild
 files: 'out/test/**/*.test.js',
 mocha: {
 ui: 'tdd',
-timeout: 20000
+timeout: 10000
 }
 });
