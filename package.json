@@ -15,7 +15,7 @@
                 {
                     "id": "context-bridge-explorer",
                     "title": "Context Bridge",
-                    "icon": "$(bridge)"
+                    "icon": "media/icon.svg"
                 }
             ]
         },
