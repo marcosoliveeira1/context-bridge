@@ -11,19 +11,29 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 			localResourceRoots: [this._extensionUri]
 		};
 
-		let existingExcludes = "";
+		let existingIgnoreFiles = "";
+		let existingIgnoreFolders = "";
 		const workspace = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
 		if (workspace) {
 			const configPath = path.join(workspace, '.compiladorai');
 			if (fs.existsSync(configPath)) {
 				try {
 					const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-					if (config.exclude) { existingExcludes = config.exclude.join(', '); }
+					if (Array.isArray(config.ignoreFiles)) {
+						existingIgnoreFiles = config.ignoreFiles.join(', ');
+					}
+					if (Array.isArray(config.ignoreFolders)) {
+						existingIgnoreFolders = config.ignoreFolders.join(', ');
+					}
+					if (Array.isArray(config.exclude)) {
+						if (!existingIgnoreFiles) { existingIgnoreFiles = config.exclude.join(', '); }
+						if (!existingIgnoreFolders) { existingIgnoreFolders = config.exclude.join(', '); }
+					}
 				} catch (e) { }
 			}
 		}
 
-		webviewView.webview.html = this._getHtmlForWebview(existingExcludes);
+		webviewView.webview.html = this._getHtmlForWebview(existingIgnoreFiles, existingIgnoreFolders);
 
 		webviewView.webview.onDidReceiveMessage(async (data) => {
 			switch (data.type) {
@@ -43,13 +53,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 					}
 					break;
 				case "onSaveConfig":
-					vscode.commands.executeCommand("project.saveConfig", { exclude: data.exclude });
+					vscode.commands.executeCommand("project.saveConfig", {
+						ignoreFiles: data.ignoreFiles,
+						ignoreFolders: data.ignoreFolders
+					});
 					break;
 			}
 		});
 	}
 
-	private _getHtmlForWebview(excludes: string) {
+	private _getHtmlForWebview(ignoreFiles: string, ignoreFolders: string) {
 		return `<!DOCTYPE html>
 
 
@@ -107,37 +120,49 @@ hr { border: 0; border-top: 1px solid var(--vscode-divider); margin: 5px 0; }
 <hr />
 
 <div class="section">
-	<label>Configurações (Ignore List)</label>
-	<textarea id="excludeList" style="min-height: 50px;" placeholder="Ex: temp, backup, logs...">${excludes}</textarea>
+	<label>Configurações (Ignore)</label>
+	<label style="text-transform: none; font-weight: normal; opacity: 1;">Arquivos para ignorar</label>
+	<textarea id="ignoreFilesList" style="min-height: 50px;" placeholder="Ex: .env, package-lock.json, src/types/generated.ts">${ignoreFiles}</textarea>
+	<label style="text-transform: none; font-weight: normal; opacity: 1;">Pastas para ignorar</label>
+	<textarea id="ignoreFoldersList" style="min-height: 50px;" placeholder="Ex: dist, src/db/generated/prisma">${ignoreFolders}</textarea>
 	<button class="secondary" onclick="saveConfig()">💾 Guardar .compiladorai</button>
 </div>
 
 <script>
 	const vscode = acquireVsCodeApi();
-	const oldState = vscode.getState() || { input: '', output: '', excludes: '${excludes.replace(/'/g, "\\'")}' };
+	const oldState = vscode.getState() || {
+		input: '',
+		output: '',
+		ignoreFiles: '${ignoreFiles.replace(/'/g, "\\'")}',
+		ignoreFolders: '${ignoreFolders.replace(/'/g, "\\'")}'
+	};
 	
 	const inputSpread = document.getElementById('inputSpread');
 	const outputCompile = document.getElementById('outputCompile');
-	const excludeList = document.getElementById('excludeList');
+	const ignoreFilesList = document.getElementById('ignoreFilesList');
+	const ignoreFoldersList = document.getElementById('ignoreFoldersList');
 	const btnCompile = document.getElementById('btnCompile');
 	const btnSpread = document.getElementById('btnSpread');
 
 	// Restaurar estado
 	inputSpread.value = oldState.input || '';
 	outputCompile.value = oldState.output || '';
-	if(oldState.excludes) excludeList.value = oldState.excludes;
+	if(oldState.ignoreFiles) ignoreFilesList.value = oldState.ignoreFiles;
+	if(oldState.ignoreFolders) ignoreFoldersList.value = oldState.ignoreFolders;
 
 	function updateState() {
 		vscode.setState({
 			input: inputSpread.value,
 			output: outputCompile.value,
-			excludes: excludeList.value
+			ignoreFiles: ignoreFilesList.value,
+			ignoreFolders: ignoreFoldersList.value
 		});
 	}
 
 	inputSpread.addEventListener('input', updateState);
 	outputCompile.addEventListener('input', updateState);
-	excludeList.addEventListener('input', updateState);
+	ignoreFilesList.addEventListener('input', updateState);
+	ignoreFoldersList.addEventListener('input', updateState);
 
 	function compile() {
 		const versioned = document.getElementById('versioned').checked;
@@ -161,7 +186,11 @@ hr { border: 0; border-top: 1px solid var(--vscode-divider); margin: 5px 0; }
 	}
 
 	function saveConfig() {
-		vscode.postMessage({ type: 'onSaveConfig', exclude: excludeList.value });
+		vscode.postMessage({
+			type: 'onSaveConfig',
+			ignoreFiles: ignoreFilesList.value,
+			ignoreFolders: ignoreFoldersList.value
+		});
 	}
 
 	window.addEventListener('message', event => {

@@ -16,14 +16,18 @@
 
 ### Project Configuration
 
-You can define which folders or files to ignore directly in the sidebar and click **💾 Salvar no Projeto**. This creates a `.compiladorai` file in your root:
+You can define which folders and files to ignore directly in the sidebar and click **💾 Salvar no Projeto**. This creates a `.compiladorai` file in your root:
 
 ```json
 {
-  "exclude": ["temp", "dist", "custom-folder"]
+  "ignoreFiles": [".env", "package-lock.json", "src/types/generated.ts"],
+  "ignoreFolders": ["temp", "dist", "src/db/generated/prisma"],
+  "exclude": [".env", "package-lock.json", "src/types/generated.ts", "temp", "dist", "src/db/generated/prisma"]
 }
 
 ```
+
+`exclude` is kept for backward compatibility, but `ignoreFiles` and `ignoreFolders` are now the recommended fields.
 
 ### Compiling (Code to Context)
 

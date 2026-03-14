@@ -22,14 +22,22 @@ export function activate(context: vscode.ExtensionContext) {
     )
   );
 
-  context.subscriptions.push(vscode.commands.registerCommand("project.saveConfig", async (config: { exclude: string }) => {
+  context.subscriptions.push(vscode.commands.registerCommand("project.saveConfig", async (config: { ignoreFiles?: string; ignoreFolders?: string; exclude?: string }) => {
     const workspace = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
     if (!workspace) { return; }
     const configPath = path.join(workspace, '.compiladorai');
-    const excludeArray = config.exclude.split(',').map(s => s.trim()).filter(s => s.length > 0);
+
+    const parseList = (value?: string) => {
+      if (!value) { return []; }
+      return value.split(',').map(s => s.trim()).filter(s => s.length > 0);
+    };
+
+    const ignoreFiles = parseList(config.ignoreFiles || config.exclude);
+    const ignoreFolders = parseList(config.ignoreFolders || config.exclude);
+    const excludeArray = Array.from(new Set([...ignoreFiles, ...ignoreFolders]));
 
     try {
-      await fs.writeFile(configPath, JSON.stringify({ exclude: excludeArray }, null, 2), 'utf8');
+      await fs.writeFile(configPath, JSON.stringify({ ignoreFiles, ignoreFolders, exclude: excludeArray }, null, 2), 'utf8');
       vscode.window.showInformationMessage("Configuração salva com sucesso.");
     } catch (err: any) {
       vscode.window.showErrorMessage(`Erro ao salvar: ${err.message}`);
