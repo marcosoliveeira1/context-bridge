@@ -25,7 +25,8 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(vscode.commands.registerCommand("project.saveConfig", async (config: { ignoreFiles?: string; ignoreFolders?: string; exclude?: string }) => {
     const workspace = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
     if (!workspace) { return; }
-    const configPath = path.join(workspace, '.compiladorai');
+    const historyDir = path.join(workspace, '.compile_history');
+    const configPath = path.join(historyDir, '.compiladorai');
 
     const parseList = (value?: string) => {
       if (!value) { return []; }
@@ -37,6 +38,7 @@ export function activate(context: vscode.ExtensionContext) {
     const excludeArray = Array.from(new Set([...ignoreFiles, ...ignoreFolders]));
 
     try {
+      await fs.mkdir(historyDir, { recursive: true });
       await fs.writeFile(configPath, JSON.stringify({ ignoreFiles, ignoreFolders, exclude: excludeArray }, null, 2), 'utf8');
       vscode.window.showInformationMessage("Configuração salva com sucesso.");
     } catch (err: any) {

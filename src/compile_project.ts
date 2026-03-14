@@ -88,30 +88,38 @@ export class ProjectCompiler {
   }
 
   private async loadProjectConfig() {
-    const configPath = path.join(this.config.projectRoot, '.compiladorai');
-    try {
-      const content = await fs.readFile(configPath, 'utf8');
-      const projectConfig = JSON.parse(content);
+    const configCandidates = [
+      path.join(this.config.projectRoot, '.compile_history', '.compiladorai'),
+      path.join(this.config.projectRoot, '.compiladorai')
+    ];
 
-      if (projectConfig.ignoreFolders && Array.isArray(projectConfig.ignoreFolders)) {
-        projectConfig.ignoreFolders.forEach((item: string) => {
-          this.addFolderPattern(item);
-        });
-      }
+    for (const configPath of configCandidates) {
+      try {
+        const content = await fs.readFile(configPath, 'utf8');
+        const projectConfig = JSON.parse(content);
 
-      if (projectConfig.ignoreFiles && Array.isArray(projectConfig.ignoreFiles)) {
-        projectConfig.ignoreFiles.forEach((item: string) => {
-          this.addFilePattern(item);
-        });
-      }
+        if (projectConfig.ignoreFolders && Array.isArray(projectConfig.ignoreFolders)) {
+          projectConfig.ignoreFolders.forEach((item: string) => {
+            this.addFolderPattern(item);
+          });
+        }
 
-      if (projectConfig.exclude && Array.isArray(projectConfig.exclude)) {
-        projectConfig.exclude.forEach((item: string) => {
-          this.addFolderPattern(item);
-          this.addFilePattern(item);
-        });
-      }
-    } catch (e) { }
+        if (projectConfig.ignoreFiles && Array.isArray(projectConfig.ignoreFiles)) {
+          projectConfig.ignoreFiles.forEach((item: string) => {
+            this.addFilePattern(item);
+          });
+        }
+
+        if (projectConfig.exclude && Array.isArray(projectConfig.exclude)) {
+          projectConfig.exclude.forEach((item: string) => {
+            this.addFolderPattern(item);
+            this.addFilePattern(item);
+          });
+        }
+
+        return;
+      } catch (e) { }
+    }
 
 
   }

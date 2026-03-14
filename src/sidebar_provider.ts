@@ -15,8 +15,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 		let existingIgnoreFolders = "";
 		const workspace = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
 		if (workspace) {
-			const configPath = path.join(workspace, '.compiladorai');
-			if (fs.existsSync(configPath)) {
+			const configCandidates = [
+				path.join(workspace, '.compile_history', '.compiladorai'),
+				path.join(workspace, '.compiladorai')
+			];
+			const configPath = configCandidates.find(candidate => fs.existsSync(candidate));
+			if (configPath) {
 				try {
 					const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 					if (Array.isArray(config.ignoreFiles)) {
@@ -125,7 +129,7 @@ hr { border: 0; border-top: 1px solid var(--vscode-divider); margin: 5px 0; }
 	<textarea id="ignoreFilesList" style="min-height: 50px;" placeholder="Ex: .env, package-lock.json, src/types/generated.ts">${ignoreFiles}</textarea>
 	<label style="text-transform: none; font-weight: normal; opacity: 1;">Pastas para ignorar</label>
 	<textarea id="ignoreFoldersList" style="min-height: 50px;" placeholder="Ex: dist, src/db/generated/prisma">${ignoreFolders}</textarea>
-	<button class="secondary" onclick="saveConfig()">💾 Guardar .compiladorai</button>
+	<button class="secondary" onclick="saveConfig()">💾 Guardar em .compile_history/.compiladorai</button>
 </div>
 
 <script>

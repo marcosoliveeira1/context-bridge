@@ -16,7 +16,7 @@
 
 ### Project Configuration
 
-You can define which folders and files to ignore directly in the sidebar and click **💾 Salvar no Projeto**. This creates a `.compiladorai` file in your root:
+You can define which folders and files to ignore directly in the sidebar and click **💾 Salvar no Projeto**. This creates a `.compiladorai` file inside `.compile_history`:
 
 ```json
 {
@@ -28,6 +28,8 @@ You can define which folders and files to ignore directly in the sidebar and cli
 ```
 
 `exclude` is kept for backward compatibility, but `ignoreFiles` and `ignoreFolders` are now the recommended fields.
+
+Current config path: `.compile_history/.compiladorai` (legacy root `.compiladorai` is still read for compatibility).
 
 ### Compiling (Code to Context)
 
