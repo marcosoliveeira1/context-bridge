@@ -10,6 +10,7 @@
 * **Project Configuration**: Save project-specific ignore rules in a `.compiladorai` file.
 * **Versioned Output**: Keep track of your prompts and project states with timestamped logs.
 * **Project Spreading**: Take a multi-file response from an AI and instantly extract it back into your project structure with built-in Path Traversal protection.
+* **Staged Diff Export**: Pull `git diff --staged` directly from the sidebar to share only what is staged.
 * **Sidebar Integration**: Easy access to configuration, ignore lists, and execution.
 
 ## 🛠 Usage
@@ -46,6 +47,13 @@ Current config path: `.compile_history/.compiladorai` (legacy root `.compiladora
 `[CODE CONTENT]`
 `--- END: path/to/file.ts ---`
 3. Click **📂 Espalhar no Projeto**.
+
+### Staged Diff (Git to Context)
+
+1. Stage your changes with Git (`git add ...`).
+2. Open the **4. Git (Staged)** section in the sidebar.
+3. Click **🧩 Git Diff (staged)**.
+4. Copy the output with **📋 Copiar Diff**.
 
 ## ⚙️ Requirements
 

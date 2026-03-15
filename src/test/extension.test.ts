@@ -70,5 +70,6 @@ suite('Context Bridge Clean Test Suite', () => {
 
         const cmds = await vscode.commands.getCommands(true);
         assert.ok(cmds.includes('project.compileProject'));
+        assert.ok(cmds.includes('project.gitStagedDiff'));
     });
 });

@@ -4,6 +4,7 @@ import * as fs from "fs/promises";
 import { ProjectCompiler } from "./compile_project";
 import { ProjectSpreader } from "./spread_project";
 import { SidebarProvider } from "./sidebar_provider";
+import { getGitStagedDiff } from "./git_staged_diff";
 
 export function activate(context: vscode.ExtensionContext) {
   const sidebarProvider = new SidebarProvider(context.extensionUri);
@@ -105,6 +106,31 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       return { content, files };
+    });
+  }));
+
+  context.subscriptions.push(vscode.commands.registerCommand("project.gitStagedDiff", async (params?: { logEnabled?: boolean }) => {
+    const workspace = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
+    if (!workspace) { return { content: "" }; }
+
+    return await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: "Lendo git diff staged...",
+    }, async () => {
+      const content = await getGitStagedDiff(workspace);
+      const shouldLog = Boolean(params?.logEnabled);
+
+      if (shouldLog) {
+        if (content) {
+          outputChannel.appendLine(`[${new Date().toISOString()}] Git staged diff obtido (${content.split(/\r?\n/).length} linhas).`);
+        } else {
+          outputChannel.appendLine(`[${new Date().toISOString()}] Git staged diff vazio ou indisponível.`);
+        }
+        outputChannel.appendLine("");
+        outputChannel.show(true);
+      }
+
+      return { content };
     });
   }));
 

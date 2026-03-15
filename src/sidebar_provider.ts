@@ -64,6 +64,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 						webviewView.webview.postMessage({ type: 'largeFilesResult', value: largeFilesResult.content, files: largeFilesResult.files });
 					}
 					break;
+				case "onGitStagedDiff":
+					const stagedDiffResult = await vscode.commands.executeCommand<{ content: string }>("project.gitStagedDiff", {
+						logEnabled: data.logEnabled
+					});
+					if (stagedDiffResult) {
+						webviewView.webview.postMessage({ type: 'gitStagedDiffResult', value: stagedDiffResult.content });
+					}
+					break;
 				case "onSpread":
 					const count = await vscode.commands.executeCommand<number>("project.spreadProject", {
 						content: data.content,
@@ -167,7 +175,16 @@ outline: none;
 </details>
 
 <details>
-	<summary>4. Configs Gerais</summary>
+	<summary>4. Git (Staged)</summary>
+	<div class="section content">
+		<button id="btnStagedDiff" class="secondary" onclick="fetchGitStagedDiff()">🧩 Git Diff (staged)</button>
+		<textarea id="outputStagedDiff" readonly placeholder="O resultado de git diff --staged aparecerá aqui..."></textarea>
+		<button class="secondary" onclick="copyStagedDiffOutput()">📋 Copiar Diff</button>
+	</div>
+</details>
+
+<details>
+	<summary>5. Configs Gerais</summary>
 	<div class="section content">
 		<div class="row">
 			<input type="checkbox" id="logEnabled">
@@ -187,6 +204,7 @@ outline: none;
 		input: '',
 		outputCompile: '',
 		outputLargeFiles: '',
+		outputStagedDiff: '',
 		ignoreFiles: '${ignoreFiles.replace(/'/g, "\\'")}',
 		ignoreFolders: '${ignoreFolders.replace(/'/g, "\\'")}',
 		largeFilesRoot: 'src',
@@ -197,6 +215,7 @@ outline: none;
 	const inputSpread = document.getElementById('inputSpread');
 	const outputCompile = document.getElementById('outputCompile');
 	const outputLargeFiles = document.getElementById('outputLargeFiles');
+	const outputStagedDiff = document.getElementById('outputStagedDiff');
 	const ignoreFilesList = document.getElementById('ignoreFilesList');
 	const ignoreFoldersList = document.getElementById('ignoreFoldersList');
 	const largeFilesRoot = document.getElementById('largeFilesRoot');
@@ -205,11 +224,13 @@ outline: none;
 	const btnCompile = document.getElementById('btnCompile');
 	const btnSpread = document.getElementById('btnSpread');
 	const btnLargeFiles = document.getElementById('btnLargeFiles');
+	const btnStagedDiff = document.getElementById('btnStagedDiff');
 
 	// Restaurar estado
 	inputSpread.value = oldState.input || '';
 	outputCompile.value = oldState.outputCompile || oldState.output || '';
 	outputLargeFiles.value = oldState.outputLargeFiles || '';
+	outputStagedDiff.value = oldState.outputStagedDiff || '';
 	if(oldState.ignoreFiles) ignoreFilesList.value = oldState.ignoreFiles;
 	if(oldState.ignoreFolders) ignoreFoldersList.value = oldState.ignoreFolders;
 	if(oldState.largeFilesRoot) largeFilesRoot.value = oldState.largeFilesRoot;
@@ -221,6 +242,7 @@ outline: none;
 			input: inputSpread.value,
 			outputCompile: outputCompile.value,
 			outputLargeFiles: outputLargeFiles.value,
+			outputStagedDiff: outputStagedDiff.value,
 			ignoreFiles: ignoreFilesList.value,
 			ignoreFolders: ignoreFoldersList.value,
 			largeFilesRoot: largeFilesRoot.value,
@@ -232,6 +254,7 @@ outline: none;
 	inputSpread.addEventListener('input', updateState);
 	outputCompile.addEventListener('input', updateState);
 	outputLargeFiles.addEventListener('input', updateState);
+	outputStagedDiff.addEventListener('input', updateState);
 	ignoreFilesList.addEventListener('input', updateState);
 	ignoreFoldersList.addEventListener('input', updateState);
 	largeFilesRoot.addEventListener('input', updateState);
@@ -262,6 +285,13 @@ outline: none;
 		vscode.postMessage({ type: 'onSpread', content: inputSpread.value, logEnabled: logsEnabled });
 	}
 
+	function fetchGitStagedDiff() {
+		const logsEnabled = logEnabled.checked;
+		btnStagedDiff.disabled = true;
+		btnStagedDiff.innerText = "A processar...";
+		vscode.postMessage({ type: 'onGitStagedDiff', logEnabled: logsEnabled });
+	}
+
 	function copyCompileOutput() {
 		outputCompile.select();
 		document.execCommand('copy');
@@ -273,6 +303,13 @@ outline: none;
 		outputLargeFiles.select();
 		document.execCommand('copy');
 		outputLargeFiles.value = '';
+		updateState();
+	}
+
+	function copyStagedDiffOutput() {
+		outputStagedDiff.select();
+		document.execCommand('copy');
+		outputStagedDiff.value = '';
 		updateState();
 	}
 
@@ -297,6 +334,12 @@ outline: none;
 			outputLargeFiles.value = m.value;
 			btnLargeFiles.disabled = false;
 			btnLargeFiles.innerText = "📏 Listar arquivos longos";
+			updateState();
+		}
+		if (m.type === 'gitStagedDiffResult') {
+			outputStagedDiff.value = m.value || '';
+			btnStagedDiff.disabled = false;
+			btnStagedDiff.innerText = "🧩 Git Diff (staged)";
 			updateState();
 		}
 		if (m.type === 'spreadFinished') {
