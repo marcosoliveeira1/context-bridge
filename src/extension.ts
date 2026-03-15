@@ -73,6 +73,37 @@ export function activate(context: vscode.ExtensionContext) {
     });
   }));
 
+  context.subscriptions.push(vscode.commands.registerCommand("project.listLargeFiles", async (params?: { minLines?: number; relativeRoot?: string }) => {
+    const workspace = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
+    if (!workspace) { return { content: "", files: [] }; }
+
+    const compiler = new ProjectCompiler({
+      projectRoot: workspace,
+      outputFile: ""
+    });
+
+    return await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: "Listando arquivos longos...",
+    }, async () => {
+      const rawMinLines = Number.isFinite(params?.minLines as number) ? Number(params?.minLines) : 100;
+      const minLines = Math.max(1, Math.floor(rawMinLines));
+      const relativeRoot = (params?.relativeRoot || "src").trim() || "src";
+      const files = await compiler.listFilesByMinLines(minLines, relativeRoot);
+      const content = files.map(file => `${file.lines} ${file.path}`).join("\n");
+
+      if (files.length > 0) {
+        outputChannel.appendLine(`[${new Date().toISOString()}] Arquivos com mais de ${minLines} linhas em ${relativeRoot} (${files.length}):`);
+        for (const file of files) {
+          outputChannel.appendLine(`${file.lines} ${file.path}`);
+        }
+        outputChannel.appendLine("");
+      }
+
+      return { content, files };
+    });
+  }));
+
   context.subscriptions.push(vscode.commands.registerCommand("project.spreadProject", async (params: { content?: string }) => {
     const workspace = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
     if (!workspace) { return 0; }

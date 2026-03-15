@@ -29,6 +29,8 @@ export class ProjectCompiler {
 
   constructor(private config: CompileConfig) { }
 
+  private configLoaded = false;
+
   private normalizePattern(value: string): string {
     return value.trim().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
   }
@@ -88,6 +90,10 @@ export class ProjectCompiler {
   }
 
   private async loadProjectConfig() {
+    if (this.configLoaded) {
+      return;
+    }
+
     const configCandidates = [
       path.join(this.config.projectRoot, '.compile_history', '.compiladorai'),
       path.join(this.config.projectRoot, '.compiladorai')
@@ -117,11 +123,76 @@ export class ProjectCompiler {
           });
         }
 
+        this.configLoaded = true;
         return;
       } catch (e) { }
     }
 
+    this.configLoaded = true;
 
+
+  }
+
+  private async *iterEligibleFiles(scanRoot: string, targetExt?: string): AsyncIterable<{ filePath: string; relPath: string }> {
+    for await (const filePath of this.walk(scanRoot)) {
+      const relPath = path.relative(this.config.projectRoot, filePath);
+      const fileName = path.basename(filePath);
+      const ext = path.extname(filePath).toLowerCase();
+      const normalizedRelPath = this.normalizePattern(relPath);
+
+      if (this.shouldIgnoreFile(fileName, normalizedRelPath)) { continue; }
+      if (targetExt && ext !== targetExt) { continue; }
+      if (this.BINARY_EXTS.has(ext)) { continue; }
+
+      yield { filePath, relPath };
+    }
+  }
+
+  private countLines(content: string): number {
+    if (!content) {
+      return 0;
+    }
+
+    return content.split(/\r?\n/).length;
+  }
+
+  async listFilesByMinLines(minLines: number, relativeRoot?: string): Promise<Array<{ path: string; lines: number }>> {
+    await this.loadProjectConfig();
+
+    const root = path.resolve(this.config.projectRoot);
+    const scanRoot = relativeRoot ? path.resolve(root, relativeRoot) : root;
+
+    if (!scanRoot.startsWith(root)) {
+      return [];
+    }
+
+    let stats;
+    try {
+      stats = await fs.stat(scanRoot);
+    } catch {
+      return [];
+    }
+
+    if (!stats.isDirectory()) {
+      return [];
+    }
+
+    const matches: Array<{ path: string; lines: number }> = [];
+
+    for await (const { filePath, relPath } of this.iterEligibleFiles(scanRoot)) {
+      try {
+        const content = await fs.readFile(filePath, 'utf8');
+        const lines = this.countLines(content);
+        if (lines > minLines) {
+          matches.push({ path: relPath, lines });
+        }
+      } catch (e) {
+        console.error(`Erro ao ler ${relPath}: `, e);
+      }
+    }
+
+    matches.sort((a, b) => b.lines - a.lines || a.path.localeCompare(b.path));
+    return matches;
   }
 
   private async *walk(dir: string): AsyncIterable<string> {
@@ -150,18 +221,7 @@ export class ProjectCompiler {
     let count = 0;
     const files: string[] = [];
 
-    for await (const filePath of this.walk(root)) {
-      const relPath = path.relative(root, filePath);
-      const fileName = path.basename(filePath);
-      const ext = path.extname(filePath).toLowerCase();
-      const normalizedRelPath = this.normalizePattern(relPath);
-
-      if (this.shouldIgnoreFile(fileName, normalizedRelPath)) { continue; }
-      if (targetExt && ext !== targetExt) { continue; }
-      if (this.BINARY_EXTS.has(ext)) { continue; }
-
-      if (this.BINARY_EXTS.has(ext)) { continue; }
-
+    for await (const { filePath, relPath } of this.iterEligibleFiles(root, targetExt)) {
       try {
         const content = await fs.readFile(filePath, 'utf8');
         parts.push(

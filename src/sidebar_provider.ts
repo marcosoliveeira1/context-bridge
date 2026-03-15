@@ -50,6 +50,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 						webviewView.webview.postMessage({ type: 'compileResult', value: result.content, files: result.files });
 					}
 					break;
+				case "onListLargeFiles":
+					const largeFilesResult = await vscode.commands.executeCommand<{ content: string; files: Array<{ path: string; lines: number }> }>("project.listLargeFiles", {
+						minLines: data.minLines,
+						relativeRoot: data.relativeRoot
+					});
+					if (largeFilesResult) {
+						webviewView.webview.postMessage({ type: 'largeFilesResult', value: largeFilesResult.content, files: largeFilesResult.files });
+					}
+					break;
 				case "onSpread":
 					const count = await vscode.commands.executeCommand<number>("project.spreadProject", { content: data.content });
 					if (count && count > 0) {
@@ -118,7 +127,18 @@ hr { border: 0; border-top: 1px solid var(--vscode-divider); margin: 5px 0; }
 	</div>
 	<button id="btnCompile" onclick="compile()">🚀 Gerar Contexto (Compile)</button>
 	<textarea id="outputCompile" readonly placeholder="O resultado da compilação aparecerá aqui..."></textarea>
-	<button class="secondary" onclick="copyOutput()">📋 Copiar Contexto</button>
+	<button class="secondary" onclick="copyCompileOutput()">📋 Copiar Contexto</button>
+	<div class="row">
+		<label for="largeFilesRoot" style="text-transform: none; font-weight: normal; opacity: 1; min-width: 56px;">Pasta</label>
+		<input id="largeFilesRoot" type="text" value="src" style="flex: 1; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); padding: 4px 6px;" />
+	</div>
+	<div class="row">
+		<label for="largeFilesMinLines" style="text-transform: none; font-weight: normal; opacity: 1; min-width: 56px;">Mín. linhas</label>
+		<input id="largeFilesMinLines" type="number" min="1" value="100" style="width: 120px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); padding: 4px 6px;" />
+	</div>
+	<button id="btnLargeFiles" class="secondary" onclick="listLargeFiles()">📏 Listar arquivos longos</button>
+	<textarea id="outputLargeFiles" readonly placeholder="A lista de arquivos longos aparecerá aqui..."></textarea>
+	<button class="secondary" onclick="copyLargeFilesOutput()">📋 Copiar Lista</button>
 </div>
 
 <hr />
@@ -136,37 +156,53 @@ hr { border: 0; border-top: 1px solid var(--vscode-divider); margin: 5px 0; }
 	const vscode = acquireVsCodeApi();
 	const oldState = vscode.getState() || {
 		input: '',
-		output: '',
+		outputCompile: '',
+		outputLargeFiles: '',
 		ignoreFiles: '${ignoreFiles.replace(/'/g, "\\'")}',
-		ignoreFolders: '${ignoreFolders.replace(/'/g, "\\'")}'
+		ignoreFolders: '${ignoreFolders.replace(/'/g, "\\'")}',
+		largeFilesRoot: 'src',
+		largeFilesMinLines: '100'
 	};
 	
 	const inputSpread = document.getElementById('inputSpread');
 	const outputCompile = document.getElementById('outputCompile');
+	const outputLargeFiles = document.getElementById('outputLargeFiles');
 	const ignoreFilesList = document.getElementById('ignoreFilesList');
 	const ignoreFoldersList = document.getElementById('ignoreFoldersList');
+	const largeFilesRoot = document.getElementById('largeFilesRoot');
+	const largeFilesMinLines = document.getElementById('largeFilesMinLines');
 	const btnCompile = document.getElementById('btnCompile');
 	const btnSpread = document.getElementById('btnSpread');
+	const btnLargeFiles = document.getElementById('btnLargeFiles');
 
 	// Restaurar estado
 	inputSpread.value = oldState.input || '';
-	outputCompile.value = oldState.output || '';
+	outputCompile.value = oldState.outputCompile || oldState.output || '';
+	outputLargeFiles.value = oldState.outputLargeFiles || '';
 	if(oldState.ignoreFiles) ignoreFilesList.value = oldState.ignoreFiles;
 	if(oldState.ignoreFolders) ignoreFoldersList.value = oldState.ignoreFolders;
+	if(oldState.largeFilesRoot) largeFilesRoot.value = oldState.largeFilesRoot;
+	if(oldState.largeFilesMinLines) largeFilesMinLines.value = oldState.largeFilesMinLines;
 
 	function updateState() {
 		vscode.setState({
 			input: inputSpread.value,
-			output: outputCompile.value,
+			outputCompile: outputCompile.value,
+			outputLargeFiles: outputLargeFiles.value,
 			ignoreFiles: ignoreFilesList.value,
-			ignoreFolders: ignoreFoldersList.value
+			ignoreFolders: ignoreFoldersList.value,
+			largeFilesRoot: largeFilesRoot.value,
+			largeFilesMinLines: largeFilesMinLines.value
 		});
 	}
 
 	inputSpread.addEventListener('input', updateState);
 	outputCompile.addEventListener('input', updateState);
+	outputLargeFiles.addEventListener('input', updateState);
 	ignoreFilesList.addEventListener('input', updateState);
 	ignoreFoldersList.addEventListener('input', updateState);
+	largeFilesRoot.addEventListener('input', updateState);
+	largeFilesMinLines.addEventListener('input', updateState);
 
 	function compile() {
 		const versioned = document.getElementById('versioned').checked;
@@ -176,16 +212,31 @@ hr { border: 0; border-top: 1px solid var(--vscode-divider); margin: 5px 0; }
 		vscode.postMessage({ type: 'onCompile', versioned, logCompiledFiles });
 	}
 
+	function listLargeFiles() {
+		const relativeRoot = (largeFilesRoot.value || 'src').trim();
+		const minLines = Number.parseInt(largeFilesMinLines.value || '100', 10);
+		btnLargeFiles.disabled = true;
+		btnLargeFiles.innerText = "A processar...";
+		vscode.postMessage({ type: 'onListLargeFiles', relativeRoot, minLines });
+	}
+
 	function spread() {
 		if(!inputSpread.value.trim()) return;
 		btnSpread.disabled = true;
 		vscode.postMessage({ type: 'onSpread', content: inputSpread.value });
 	}
 
-	function copyOutput() {
+	function copyCompileOutput() {
 		outputCompile.select();
 		document.execCommand('copy');
 		outputCompile.value = '';
+		updateState();
+	}
+
+	function copyLargeFilesOutput() {
+		outputLargeFiles.select();
+		document.execCommand('copy');
+		outputLargeFiles.value = '';
 		updateState();
 	}
 
@@ -203,6 +254,12 @@ hr { border: 0; border-top: 1px solid var(--vscode-divider); margin: 5px 0; }
 			outputCompile.value = m.value;
 			btnCompile.disabled = false;
 			btnCompile.innerText = "🚀 Gerar Contexto (Compile)";
+			updateState();
+		}
+		if (m.type === 'largeFilesResult') {
+			outputLargeFiles.value = m.value;
+			btnLargeFiles.disabled = false;
+			btnLargeFiles.innerText = "📏 Listar arquivos longos";
 			updateState();
 		}
 		if (m.type === 'spreadSuccess') {
