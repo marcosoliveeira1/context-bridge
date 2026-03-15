@@ -13,6 +13,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
 		let existingIgnoreFiles = "";
 		let existingIgnoreFolders = "";
+		let existingLogEnabled = false;
 		const workspace = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
 		if (workspace) {
 			const configCandidates = [
@@ -33,18 +34,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 						if (!existingIgnoreFiles) { existingIgnoreFiles = config.exclude.join(', '); }
 						if (!existingIgnoreFolders) { existingIgnoreFolders = config.exclude.join(', '); }
 					}
+					if (typeof config.logEnabled === 'boolean') {
+						existingLogEnabled = config.logEnabled;
+					}
 				} catch (e) { }
 			}
 		}
 
-		webviewView.webview.html = this._getHtmlForWebview(existingIgnoreFiles, existingIgnoreFolders);
+		webviewView.webview.html = this._getHtmlForWebview(existingIgnoreFiles, existingIgnoreFolders, existingLogEnabled);
 
 		webviewView.webview.onDidReceiveMessage(async (data) => {
 			switch (data.type) {
 				case "onCompile":
 					const result = await vscode.commands.executeCommand<{ content: string; files: string[] }>("project.compileProject", {
 						versioned: data.versioned,
-						logCompiledFiles: data.logCompiledFiles
+						logEnabled: data.logEnabled
 					});
 					if (result) {
 						webviewView.webview.postMessage({ type: 'compileResult', value: result.content, files: result.files });
@@ -53,32 +57,33 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 				case "onListLargeFiles":
 					const largeFilesResult = await vscode.commands.executeCommand<{ content: string; files: Array<{ path: string; lines: number }> }>("project.listLargeFiles", {
 						minLines: data.minLines,
-						relativeRoot: data.relativeRoot
+						relativeRoot: data.relativeRoot,
+						logEnabled: data.logEnabled
 					});
 					if (largeFilesResult) {
 						webviewView.webview.postMessage({ type: 'largeFilesResult', value: largeFilesResult.content, files: largeFilesResult.files });
 					}
 					break;
 				case "onSpread":
-					const count = await vscode.commands.executeCommand<number>("project.spreadProject", { content: data.content });
-					if (count && count > 0) {
-						webviewView.webview.postMessage({ type: 'spreadSuccess' });
-					}
+					const count = await vscode.commands.executeCommand<number>("project.spreadProject", {
+						content: data.content,
+						logEnabled: data.logEnabled
+					});
+					webviewView.webview.postMessage({ type: 'spreadFinished', count: count || 0 });
 					break;
 				case "onSaveConfig":
 					vscode.commands.executeCommand("project.saveConfig", {
 						ignoreFiles: data.ignoreFiles,
-						ignoreFolders: data.ignoreFolders
+						ignoreFolders: data.ignoreFolders,
+						logEnabled: data.logEnabled
 					});
 					break;
 			}
 		});
 	}
 
-	private _getHtmlForWebview(ignoreFiles: string, ignoreFolders: string) {
+	private _getHtmlForWebview(ignoreFiles: string, ignoreFolders: string, logEnabled: boolean) {
 		return `<!DOCTYPE html>
-
-
 <html lang="pt-pt">
 <head>
 <meta charset="UTF-8">
@@ -91,6 +96,12 @@ width: 100%; background: var(--vscode-input-background); color: var(--vscode-inp
 border: 1px solid var(--vscode-input-border); font-family: var(--vscode-editor-font-family);
 font-size: 12px; min-height: 120px; resize: vertical; box-sizing: border-box; padding: 8px;
 }
+input[type="text"], input[type="number"] {
+background: var(--vscode-input-background);
+color: var(--vscode-input-foreground);
+border: 1px solid var(--vscode-input-border);
+padding: 4px 6px;
+}
 textarea:focus { outline: 1px solid var(--vscode-focusBorder); border-color: transparent; }
 button {
 cursor: pointer; padding: 10px; border: none; width: 100%; font-weight: bold;
@@ -102,55 +113,73 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
 .secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
 .row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-hr { border: 0; border-top: 1px solid var(--vscode-divider); margin: 5px 0; }
-#status { font-size: 10px; color: var(--vscode-charts-green); font-style: italic; display: none; }
+details {
+border: 1px solid var(--vscode-panel-border);
+border-radius: 4px;
+padding: 6px;
+}
+summary {
+cursor: pointer;
+font-weight: 600;
+font-size: 12px;
+outline: none;
+}
+.content { margin-top: 10px; }
 </style>
 </head>
 <body>
-<div class="section">
-<label>1. Entrada (AI Spread)</label>
-<textarea id="inputSpread" placeholder="Cole aqui a resposta da IA..."></textarea>
-<button id="btnSpread" onclick="spread()">📂 Espalhar no Projeto</button>
-</div>
-
-<hr />
-
-<div class="section">
-	<label>2. Saída (Project Context)</label>
-	<div class="row">
-		<input type="checkbox" id="versioned" checked>
-		<label for="versioned" style="text-transform: none; font-weight: normal; opacity: 1;">Salvar em .compile_history</label>
+<details open>
+	<summary>1. Entrada</summary>
+	<div class="section content">
+		<textarea id="inputSpread" placeholder="Cole aqui a resposta da IA..."></textarea>
+		<button id="btnSpread" onclick="spread()">📂 Espalhar no Projeto</button>
 	</div>
-	<div class="row">
-		<input type="checkbox" id="logCompiledFiles">
-		<label for="logCompiledFiles" style="text-transform: none; font-weight: normal; opacity: 1;">Logar nomes dos arquivos compilados</label>
-	</div>
-	<button id="btnCompile" onclick="compile()">🚀 Gerar Contexto (Compile)</button>
-	<textarea id="outputCompile" readonly placeholder="O resultado da compilação aparecerá aqui..."></textarea>
-	<button class="secondary" onclick="copyCompileOutput()">📋 Copiar Contexto</button>
-	<div class="row">
-		<label for="largeFilesRoot" style="text-transform: none; font-weight: normal; opacity: 1; min-width: 56px;">Pasta</label>
-		<input id="largeFilesRoot" type="text" value="src" style="flex: 1; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); padding: 4px 6px;" />
-	</div>
-	<div class="row">
-		<label for="largeFilesMinLines" style="text-transform: none; font-weight: normal; opacity: 1; min-width: 56px;">Mín. linhas</label>
-		<input id="largeFilesMinLines" type="number" min="1" value="100" style="width: 120px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); padding: 4px 6px;" />
-	</div>
-	<button id="btnLargeFiles" class="secondary" onclick="listLargeFiles()">📏 Listar arquivos longos</button>
-	<textarea id="outputLargeFiles" readonly placeholder="A lista de arquivos longos aparecerá aqui..."></textarea>
-	<button class="secondary" onclick="copyLargeFilesOutput()">📋 Copiar Lista</button>
-</div>
+</details>
 
-<hr />
+<details open>
+	<summary>2. Saída</summary>
+	<div class="section content">
+		<div class="row">
+			<input type="checkbox" id="versioned" checked>
+			<label for="versioned" style="text-transform: none; font-weight: normal; opacity: 1;">Salvar em .compile_history</label>
+		</div>
+		<button id="btnCompile" onclick="compile()">🚀 Gerar Contexto (Compile)</button>
+		<textarea id="outputCompile" readonly placeholder="O resultado da compilação aparecerá aqui..."></textarea>
+		<button class="secondary" onclick="copyCompileOutput()">📋 Copiar Contexto</button>
+	</div>
+</details>
 
-<div class="section">
-	<label>Configurações (Ignore)</label>
-	<label style="text-transform: none; font-weight: normal; opacity: 1;">Arquivos para ignorar</label>
-	<textarea id="ignoreFilesList" style="min-height: 50px;" placeholder="Ex: .env, package-lock.json, src/types/generated.ts">${ignoreFiles}</textarea>
-	<label style="text-transform: none; font-weight: normal; opacity: 1;">Pastas para ignorar</label>
-	<textarea id="ignoreFoldersList" style="min-height: 50px;" placeholder="Ex: dist, src/db/generated/prisma">${ignoreFolders}</textarea>
-	<button class="secondary" onclick="saveConfig()">💾 Guardar em .compile_history/.compiladorai</button>
-</div>
+<details>
+	<summary>3. Arquivos Longos</summary>
+	<div class="section content">
+		<div class="row">
+			<label for="largeFilesRoot" style="text-transform: none; font-weight: normal; opacity: 1; min-width: 56px;">Pasta</label>
+			<input id="largeFilesRoot" type="text" value="src" style="flex: 1;" />
+		</div>
+		<div class="row">
+			<label for="largeFilesMinLines" style="text-transform: none; font-weight: normal; opacity: 1; min-width: 56px;">Mín. linhas</label>
+			<input id="largeFilesMinLines" type="number" min="1" value="100" style="width: 120px;" />
+		</div>
+		<button id="btnLargeFiles" class="secondary" onclick="listLargeFiles()">📏 Listar arquivos longos</button>
+		<textarea id="outputLargeFiles" readonly placeholder="A lista de arquivos longos aparecerá aqui..."></textarea>
+		<button class="secondary" onclick="copyLargeFilesOutput()">📋 Copiar Lista</button>
+	</div>
+</details>
+
+<details>
+	<summary>4. Configs Gerais</summary>
+	<div class="section content">
+		<div class="row">
+			<input type="checkbox" id="logEnabled">
+			<label for="logEnabled" style="text-transform: none; font-weight: normal; opacity: 1;">Ativar logs (Compile, Spread e Arquivos Longos)</label>
+		</div>
+		<label style="text-transform: none; font-weight: normal; opacity: 1;">Arquivos para ignorar</label>
+		<textarea id="ignoreFilesList" style="min-height: 50px;" placeholder="Ex: .env, package-lock.json, src/types/generated.ts">${ignoreFiles}</textarea>
+		<label style="text-transform: none; font-weight: normal; opacity: 1;">Pastas para ignorar</label>
+		<textarea id="ignoreFoldersList" style="min-height: 50px;" placeholder="Ex: dist, src/db/generated/prisma">${ignoreFolders}</textarea>
+		<button class="secondary" onclick="saveConfig()">💾 Guardar em .compile_history/.compiladorai</button>
+	</div>
+</details>
 
 <script>
 	const vscode = acquireVsCodeApi();
@@ -161,7 +190,8 @@ hr { border: 0; border-top: 1px solid var(--vscode-divider); margin: 5px 0; }
 		ignoreFiles: '${ignoreFiles.replace(/'/g, "\\'")}',
 		ignoreFolders: '${ignoreFolders.replace(/'/g, "\\'")}',
 		largeFilesRoot: 'src',
-		largeFilesMinLines: '100'
+		largeFilesMinLines: '100',
+		logEnabled: ${logEnabled ? 'true' : 'false'}
 	};
 	
 	const inputSpread = document.getElementById('inputSpread');
@@ -171,6 +201,7 @@ hr { border: 0; border-top: 1px solid var(--vscode-divider); margin: 5px 0; }
 	const ignoreFoldersList = document.getElementById('ignoreFoldersList');
 	const largeFilesRoot = document.getElementById('largeFilesRoot');
 	const largeFilesMinLines = document.getElementById('largeFilesMinLines');
+	const logEnabled = document.getElementById('logEnabled');
 	const btnCompile = document.getElementById('btnCompile');
 	const btnSpread = document.getElementById('btnSpread');
 	const btnLargeFiles = document.getElementById('btnLargeFiles');
@@ -183,6 +214,7 @@ hr { border: 0; border-top: 1px solid var(--vscode-divider); margin: 5px 0; }
 	if(oldState.ignoreFolders) ignoreFoldersList.value = oldState.ignoreFolders;
 	if(oldState.largeFilesRoot) largeFilesRoot.value = oldState.largeFilesRoot;
 	if(oldState.largeFilesMinLines) largeFilesMinLines.value = oldState.largeFilesMinLines;
+	logEnabled.checked = Boolean(oldState.logEnabled);
 
 	function updateState() {
 		vscode.setState({
@@ -192,7 +224,8 @@ hr { border: 0; border-top: 1px solid var(--vscode-divider); margin: 5px 0; }
 			ignoreFiles: ignoreFilesList.value,
 			ignoreFolders: ignoreFoldersList.value,
 			largeFilesRoot: largeFilesRoot.value,
-			largeFilesMinLines: largeFilesMinLines.value
+			largeFilesMinLines: largeFilesMinLines.value,
+			logEnabled: logEnabled.checked
 		});
 	}
 
@@ -203,27 +236,30 @@ hr { border: 0; border-top: 1px solid var(--vscode-divider); margin: 5px 0; }
 	ignoreFoldersList.addEventListener('input', updateState);
 	largeFilesRoot.addEventListener('input', updateState);
 	largeFilesMinLines.addEventListener('input', updateState);
+	logEnabled.addEventListener('change', updateState);
 
 	function compile() {
 		const versioned = document.getElementById('versioned').checked;
-		const logCompiledFiles = document.getElementById('logCompiledFiles').checked;
+		const logsEnabled = logEnabled.checked;
 		btnCompile.disabled = true;
 		btnCompile.innerText = "A processar...";
-		vscode.postMessage({ type: 'onCompile', versioned, logCompiledFiles });
+		vscode.postMessage({ type: 'onCompile', versioned, logEnabled: logsEnabled });
 	}
 
 	function listLargeFiles() {
 		const relativeRoot = (largeFilesRoot.value || 'src').trim();
 		const minLines = Number.parseInt(largeFilesMinLines.value || '100', 10);
+		const logsEnabled = logEnabled.checked;
 		btnLargeFiles.disabled = true;
 		btnLargeFiles.innerText = "A processar...";
-		vscode.postMessage({ type: 'onListLargeFiles', relativeRoot, minLines });
+		vscode.postMessage({ type: 'onListLargeFiles', relativeRoot, minLines, logEnabled: logsEnabled });
 	}
 
 	function spread() {
 		if(!inputSpread.value.trim()) return;
+		const logsEnabled = logEnabled.checked;
 		btnSpread.disabled = true;
-		vscode.postMessage({ type: 'onSpread', content: inputSpread.value });
+		vscode.postMessage({ type: 'onSpread', content: inputSpread.value, logEnabled: logsEnabled });
 	}
 
 	function copyCompileOutput() {
@@ -244,7 +280,8 @@ hr { border: 0; border-top: 1px solid var(--vscode-divider); margin: 5px 0; }
 		vscode.postMessage({
 			type: 'onSaveConfig',
 			ignoreFiles: ignoreFilesList.value,
-			ignoreFolders: ignoreFoldersList.value
+			ignoreFolders: ignoreFoldersList.value,
+			logEnabled: logEnabled.checked
 		});
 	}
 
@@ -262,15 +299,15 @@ hr { border: 0; border-top: 1px solid var(--vscode-divider); margin: 5px 0; }
 			btnLargeFiles.innerText = "📏 Listar arquivos longos";
 			updateState();
 		}
-		if (m.type === 'spreadSuccess') {
-			inputSpread.value = '';
+		if (m.type === 'spreadFinished') {
+			if (m.count > 0) {
+				inputSpread.value = '';
+			}
 			btnSpread.disabled = false;
 			updateState();
 		}
 	});
 </script>
-
-
 </body>
 </html>`;
 	}

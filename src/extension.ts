@@ -22,7 +22,7 @@ export function activate(context: vscode.ExtensionContext) {
     )
   );
 
-  context.subscriptions.push(vscode.commands.registerCommand("project.saveConfig", async (config: { ignoreFiles?: string; ignoreFolders?: string; exclude?: string }) => {
+  context.subscriptions.push(vscode.commands.registerCommand("project.saveConfig", async (config: { ignoreFiles?: string; ignoreFolders?: string; exclude?: string; logEnabled?: boolean }) => {
     const workspace = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
     if (!workspace) { return; }
     const historyDir = path.join(workspace, '.compile_history');
@@ -36,10 +36,11 @@ export function activate(context: vscode.ExtensionContext) {
     const ignoreFiles = parseList(config.ignoreFiles || config.exclude);
     const ignoreFolders = parseList(config.ignoreFolders || config.exclude);
     const excludeArray = Array.from(new Set([...ignoreFiles, ...ignoreFolders]));
+    const logEnabled = Boolean(config.logEnabled);
 
     try {
       await fs.mkdir(historyDir, { recursive: true });
-      await fs.writeFile(configPath, JSON.stringify({ ignoreFiles, ignoreFolders, exclude: excludeArray }, null, 2), 'utf8');
+      await fs.writeFile(configPath, JSON.stringify({ ignoreFiles, ignoreFolders, exclude: excludeArray, logEnabled }, null, 2), 'utf8');
       vscode.window.showInformationMessage("Configuração salva com sucesso.");
     } catch (err: any) {
       vscode.window.showErrorMessage(`Erro ao salvar: ${err.message}`);
@@ -61,7 +62,8 @@ export function activate(context: vscode.ExtensionContext) {
       title: "Gerando contexto para IA...",
     }, async () => {
       const result = await compiler.run();
-      if (params?.logCompiledFiles && result.files.length > 0) {
+      const shouldLog = Boolean(params?.logEnabled ?? params?.logCompiledFiles);
+      if (shouldLog && result.files.length > 0) {
         outputChannel.appendLine(`[${new Date().toISOString()}] Arquivos compilados (${result.files.length}):`);
         for (const file of result.files) {
           outputChannel.appendLine(`- ${file}`);
@@ -73,7 +75,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
   }));
 
-  context.subscriptions.push(vscode.commands.registerCommand("project.listLargeFiles", async (params?: { minLines?: number; relativeRoot?: string }) => {
+  context.subscriptions.push(vscode.commands.registerCommand("project.listLargeFiles", async (params?: { minLines?: number; relativeRoot?: string; logEnabled?: boolean }) => {
     const workspace = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
     if (!workspace) { return { content: "", files: [] }; }
 
@@ -91,20 +93,22 @@ export function activate(context: vscode.ExtensionContext) {
       const relativeRoot = (params?.relativeRoot || "src").trim() || "src";
       const files = await compiler.listFilesByMinLines(minLines, relativeRoot);
       const content = files.map(file => `${file.lines} ${file.path}`).join("\n");
+      const shouldLog = Boolean(params?.logEnabled);
 
-      if (files.length > 0) {
+      if (shouldLog && files.length > 0) {
         outputChannel.appendLine(`[${new Date().toISOString()}] Arquivos com mais de ${minLines} linhas em ${relativeRoot} (${files.length}):`);
         for (const file of files) {
           outputChannel.appendLine(`${file.lines} ${file.path}`);
         }
         outputChannel.appendLine("");
+        outputChannel.show(true);
       }
 
       return { content, files };
     });
   }));
 
-  context.subscriptions.push(vscode.commands.registerCommand("project.spreadProject", async (params: { content?: string }) => {
+  context.subscriptions.push(vscode.commands.registerCommand("project.spreadProject", async (params: { content?: string; logEnabled?: boolean }) => {
     const workspace = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
     if (!workspace) { return 0; }
 
@@ -120,6 +124,11 @@ export function activate(context: vscode.ExtensionContext) {
         title: "Espalhando arquivos no projeto...",
       }, async () => {
         const count = await spreader.run(params?.content);
+        if (params?.logEnabled) {
+          outputChannel.appendLine(`[${new Date().toISOString()}] Spread executado: ${count} arquivo(s) atualizados.`);
+          outputChannel.appendLine("");
+          outputChannel.show(true);
+        }
         if (count > 0) {
           vscode.window.showInformationMessage(`Sucesso! ${count} arquivos atualizados.`);
         }
