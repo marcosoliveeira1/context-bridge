@@ -48,7 +48,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 				case "onCompile":
 					const result = await vscode.commands.executeCommand<{ content: string; files: string[] }>("project.compileProject", {
 						versioned: data.versioned,
-						logEnabled: data.logEnabled
+						logEnabled: data.logEnabled,
+						baseFolder: data.baseFolder
 					});
 					if (result) {
 						webviewView.webview.postMessage({ type: 'compileResult', value: result.content, files: result.files });
@@ -58,7 +59,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 					const largeFilesResult = await vscode.commands.executeCommand<{ content: string; files: Array<{ path: string; lines: number }> }>("project.listLargeFiles", {
 						minLines: data.minLines,
 						relativeRoot: data.relativeRoot,
-						logEnabled: data.logEnabled
+						logEnabled: data.logEnabled,
+						baseFolder: data.baseFolder
 					});
 					if (largeFilesResult) {
 						webviewView.webview.postMessage({ type: 'largeFilesResult', value: largeFilesResult.content, files: largeFilesResult.files });
@@ -75,7 +77,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 				case "onSpread":
 					const count = await vscode.commands.executeCommand<number>("project.spreadProject", {
 						content: data.content,
-						logEnabled: data.logEnabled
+						logEnabled: data.logEnabled,
+						baseFolder: data.baseFolder
 					});
 					webviewView.webview.postMessage({ type: 'spreadFinished', count: count || 0 });
 					break;
@@ -136,6 +139,13 @@ outline: none;
 </style>
 </head>
 <body>
+<div class="section">
+	<div class="row">
+		<label for="baseFolder" style="text-transform: none; font-weight: normal; opacity: 1; min-width: 80px;">Pasta Inicial</label>
+		<input id="baseFolder" type="text" value="." placeholder="." style="flex: 1;" />
+	</div>
+</div>
+
 <details open>
 	<summary>1. Entrada</summary>
 	<div class="section content">
@@ -202,6 +212,7 @@ outline: none;
 	const vscode = acquireVsCodeApi();
 	const oldState = vscode.getState() || {
 		input: '',
+		baseFolder: '.',
 		outputCompile: '',
 		outputLargeFiles: '',
 		outputStagedDiff: '',
@@ -213,6 +224,7 @@ outline: none;
 	};
 	
 	const inputSpread = document.getElementById('inputSpread');
+	const baseFolder = document.getElementById('baseFolder');
 	const outputCompile = document.getElementById('outputCompile');
 	const outputLargeFiles = document.getElementById('outputLargeFiles');
 	const outputStagedDiff = document.getElementById('outputStagedDiff');
@@ -228,6 +240,7 @@ outline: none;
 
 	// Restaurar estado
 	inputSpread.value = oldState.input || '';
+	baseFolder.value = oldState.baseFolder !== undefined ? oldState.baseFolder : '.';
 	outputCompile.value = oldState.outputCompile || oldState.output || '';
 	outputLargeFiles.value = oldState.outputLargeFiles || '';
 	outputStagedDiff.value = oldState.outputStagedDiff || '';
@@ -240,6 +253,7 @@ outline: none;
 	function updateState() {
 		vscode.setState({
 			input: inputSpread.value,
+			baseFolder: baseFolder.value,
 			outputCompile: outputCompile.value,
 			outputLargeFiles: outputLargeFiles.value,
 			outputStagedDiff: outputStagedDiff.value,
@@ -252,6 +266,7 @@ outline: none;
 	}
 
 	inputSpread.addEventListener('input', updateState);
+	baseFolder.addEventListener('input', updateState);
 	outputCompile.addEventListener('input', updateState);
 	outputLargeFiles.addEventListener('input', updateState);
 	outputStagedDiff.addEventListener('input', updateState);
@@ -264,25 +279,28 @@ outline: none;
 	function compile() {
 		const versioned = document.getElementById('versioned').checked;
 		const logsEnabled = logEnabled.checked;
+		const folder = (baseFolder.value || '.').trim() || '.';
 		btnCompile.disabled = true;
 		btnCompile.innerText = "A processar...";
-		vscode.postMessage({ type: 'onCompile', versioned, logEnabled: logsEnabled });
+		vscode.postMessage({ type: 'onCompile', versioned, logEnabled: logsEnabled, baseFolder: folder });
 	}
 
 	function listLargeFiles() {
 		const relativeRoot = (largeFilesRoot.value || 'src').trim();
 		const minLines = Number.parseInt(largeFilesMinLines.value || '100', 10);
 		const logsEnabled = logEnabled.checked;
+		const folder = (baseFolder.value || '.').trim() || '.';
 		btnLargeFiles.disabled = true;
 		btnLargeFiles.innerText = "A processar...";
-		vscode.postMessage({ type: 'onListLargeFiles', relativeRoot, minLines, logEnabled: logsEnabled });
+		vscode.postMessage({ type: 'onListLargeFiles', relativeRoot, minLines, logEnabled: logsEnabled, baseFolder: folder });
 	}
 
 	function spread() {
 		if(!inputSpread.value.trim()) return;
 		const logsEnabled = logEnabled.checked;
+		const folder = (baseFolder.value || '.').trim() || '.';
 		btnSpread.disabled = true;
-		vscode.postMessage({ type: 'onSpread', content: inputSpread.value, logEnabled: logsEnabled });
+		vscode.postMessage({ type: 'onSpread', content: inputSpread.value, logEnabled: logsEnabled, baseFolder: folder });
 	}
 
 	function fetchGitStagedDiff() {

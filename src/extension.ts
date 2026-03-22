@@ -52,8 +52,12 @@ export function activate(context: vscode.ExtensionContext) {
     const workspace = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
     if (!workspace) { return ""; }
 
+    const baseFolder = (params?.baseFolder || '.').trim() || '.';
+    const projectRoot = path.resolve(path.join(workspace, baseFolder));
+    if (!projectRoot.startsWith(workspace)) { return ""; }
+
     const compiler = new ProjectCompiler({
-      projectRoot: workspace,
+      projectRoot,
       outputFile: "",
       saveToHistory: params?.versioned
     });
@@ -65,7 +69,7 @@ export function activate(context: vscode.ExtensionContext) {
       const result = await compiler.run();
       const shouldLog = Boolean(params?.logEnabled ?? params?.logCompiledFiles);
       if (shouldLog && result.files.length > 0) {
-        outputChannel.appendLine(`[${new Date().toISOString()}] Arquivos compilados (${result.files.length}):`);
+        outputChannel.appendLine(`[${new Date().toISOString()}] Arquivos compilados na pasta ${projectRoot} (${result.files.length}):`);
         for (const file of result.files) {
           outputChannel.appendLine(`- ${file}`);
         }
@@ -76,7 +80,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
   }));
 
-  context.subscriptions.push(vscode.commands.registerCommand("project.listLargeFiles", async (params?: { minLines?: number; relativeRoot?: string; logEnabled?: boolean }) => {
+  context.subscriptions.push(vscode.commands.registerCommand("project.listLargeFiles", async (params?: { minLines?: number; relativeRoot?: string; baseFolder?: string; logEnabled?: boolean }) => {
     const workspace = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
     if (!workspace) { return { content: "", files: [] }; }
 
@@ -92,7 +96,9 @@ export function activate(context: vscode.ExtensionContext) {
       const rawMinLines = Number.isFinite(params?.minLines as number) ? Number(params?.minLines) : 100;
       const minLines = Math.max(1, Math.floor(rawMinLines));
       const relativeRoot = (params?.relativeRoot || "src").trim() || "src";
-      const files = await compiler.listFilesByMinLines(minLines, relativeRoot);
+      const baseFolder = (params?.baseFolder || '.').trim() || '.';
+      const combinedRoot = baseFolder === '.' ? relativeRoot : `${baseFolder}/${relativeRoot}`;
+      const files = await compiler.listFilesByMinLines(minLines, combinedRoot);
       const content = files.map(file => `${file.lines} ${file.path}`).join("\n");
       const shouldLog = Boolean(params?.logEnabled);
 
@@ -134,13 +140,17 @@ export function activate(context: vscode.ExtensionContext) {
     });
   }));
 
-  context.subscriptions.push(vscode.commands.registerCommand("project.spreadProject", async (params: { content?: string; logEnabled?: boolean }) => {
+  context.subscriptions.push(vscode.commands.registerCommand("project.spreadProject", async (params: { content?: string; baseFolder?: string; logEnabled?: boolean }) => {
     const workspace = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
     if (!workspace) { return 0; }
 
+    const baseFolder = (params?.baseFolder || '.').trim() || '.';
+    const outputDirectory = path.resolve(path.join(workspace, baseFolder));
+    if (!outputDirectory.startsWith(workspace)) { return 0; }
+
     const spreader = new ProjectSpreader({
       inputFile: "",
-      outputDirectory: workspace,
+      outputDirectory,
       force: true
     });
 
